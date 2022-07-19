@@ -1,0 +1,166 @@
+---
+title: "Online companion dashboard for the public"
+author: "Won Do Lee"
+name: "dashboard"
+output_dir: docs
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup,message=FALSE, warning=FALSE, paged.print=FALSE,include=FALSE}
+knitr::opts_chunk$set(message = FALSE,warning=FALSE, paged.print=FALSE)
+Sys.setlocale(locale="English_United Kingdom")
+rm(list=ls())
+setwd("d:/WORKSPACE/GIT/JFF/data/")
+data.path<-"d:/WORKSPACE/GIT/JFF/data/"
+require(flexdashboard)
+require(dplyr)
+require(leaflet)
+require(geohashTools)
+require(sf)
+require(lubridate)
+gps.tracks<-read.csv("position.csv")
+gps.tracks$date<-as.POSIXct(gps.tracks$date,tz="GMT",type=c("%Y-%m-%d %H:%M:%S"))
+gps.tracks$day<-format(gps.tracks$date,format=("%Y-%m-%d"))
+gps.tracks$hour<-hour(gps.tracks$date)
+
+geo.hash.6L<-as.data.frame(gh_encode(gps.tracks$latitude,gps.tracks$longitude,6L));colnames(geo.hash.6L)<-"geohash.6L" #27
+freq.6L<-plyr::count(geo.hash.6L$geohash.6L)
+sp.geo.6L<-gh_to_sf(geo.hash.6L,gh_col="geohash.6L") 
+
+require(dplyr)
+gps.tracks$diff.time<-gps.tracks$date-lag(gps.tracks$date)
+
+require(dplyr)
+require(stringi)
+gps.tracks<-cbind(gps.tracks,geo.hash.6L)
+gps.tracks$date<-as.POSIXct(gps.tracks$date,tz="UTC",format=c("%Y-%m-%d %H:%M:%OS"))
+gps.geohash<-st_as_sf(right_join(gps.tracks,sp.geo.6L,by="geohash.6L"))
+
+oxford<-st_read("MSOA_OXFORD.geojson")
+oxford<-st_transform(oxford,4326)
+
+require(leaflet)
+require(sf)
+require(leaflet)
+require(leaftime)
+require(geojsonio)
+gps.geohash$start<-strptime(gps.geohash$date,c("%Y-%m-%d %H:%M:%S"))
+gps.geohash$end<-dplyr::lead(gps.geohash$start,1)
+gps.geohash.time <- geojson_json(gps.geohash)
+
+require(leaflet.extras2)
+require(leaftime)
+require(geojsonsf)
+require(leaflet)
+require(htmltools)
+# we can control the slider controls through slider Options
+bins <- c(0, 10, 20, 50, 100, 200, 500, 1000, Inf)
+
+processed.data<-st_read(paste0(data.path,"route.with.air.data.geojson"))
+processed.geohash.start<-gh_encode(processed.data$fy,processed.data$fx,6L)
+geohash.start<-as.data.frame(processed.geohash.start);colnames(geohash.start)<-"geohash.start"
+geohash.start<-gh_to_sf(geohash.start,gh_col="geohash.start")
+
+processed.geohash.end<-gh_encode(processed.data$ty,processed.data$tx,6L)
+geohash.end<-as.data.frame(processed.geohash.end);colnames(geohash.end)<-"geohash.end"
+geohash.end<-gh_to_sf(geohash.end,gh_col="geohash.end")
+
+int.data.tracks<-cbind(processed.data,processed.geohash.start,processed.geohash.end)
+int.data.tracks$date.time.x<-as.POSIXct(int.data.tracks$date.time.x,tz="UTC",format=c("%Y-%m-%d %H:%M:%OS"))
+int.data.tracks$start<-strptime(int.data.tracks$date.time.x,c("%Y-%m-%d %H:%M:%S"))
+int.data.tracks$end<-dplyr::lead(int.data.tracks$start,1)
+
+require(dplyr)
+int.data.tracks.geohash<-left_join(geohash.start,as.data.frame(int.data.tracks),by=c("geohash.start"="processed.geohash.start"))
+int.data.tracks.time <- geojsonio::geojson_json(int.data.tracks.geohash)
+pal <- colorBin("Reds", domain = int.data.tracks.geohash$NO2, bins = 5, pretty = TRUE)
+
+avg.air.data.by.date<- processed.data %>% group_by (hour) %>% summarise (date.time=first(paste0(hour,":00:00")),
+                                                                    NO2=mean(NO2),
+                                                                    VOC=mean(VOC),
+                                                                    PM10=mean(PM10),
+                                                                    PM2.5=mean(PM2.5),
+                                                                    PM1=mean(PM1)) %>% ungroup()
+avg.air.data.by.date<-data.frame(avg.air.data.by.date);avg.air.data.by.date<-avg.air.data.by.date[c(-8)]
+
+ref.air.data.by.date<- processed.data %>% group_by (hour) %>% summarise (date.time=first(paste0(hour,":00:00")),
+                                                                    ref.NO2=mean(ref.NO2),
+                                                                    ref.PM10=mean(ref.PM10),
+                                                                    ref.PM2.5=mean(ref.PM2.5)) %>% ungroup()
+ref.air.data.by.date<-data.frame(ref.air.data.by.date);ref.air.data.by.date<-ref.air.data.by.date[c(-6)]
+
+avg.air.data.by.date<-left_join(ref.air.data.by.date,avg.air.data.by.date,by=c("date.time","hour"))
+avg.air.data.by.date$date.time<-as.POSIXct(avg.air.data.by.date$date.time, format="%H:%M:%S")
+```
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+## Map
+
+```{r leaflet map panel,message=FALSE, warning=FALSE, paged.print=FALSE}
+leaflet() %>% addProviderTiles('CartoDB.Positron') %>%
+  addPolygons(data=oxford,stroke = FALSE, color = "grey80", fillOpacity = 0.2) %>%
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-07"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="7 June 2021 (Mon)") %>% 
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-08"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="8 June 2021 (Tue)") %>% 
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-09"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="9 June 2021 (Wed)") %>%
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-10"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="10 June 2021 (Thu)") %>%
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-11"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="11 June 2021 (Fri)") %>% 
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-12"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="12 June 2021 (Sat)") %>%
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-13"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="13 June 2021 (Sun)") %>% 
+  addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-14"),fillColor = ~pal(NO2), fillOpacity = 0.1,
+              weight = 0, opacity = 0.1,group="14 June 2021 (Mon)") %>%
+  addLegend(data=int.data.tracks.geohash,pal = pal, values = ~NO2, opacity = 0.8, title = 'NO2 ppb', position = "bottomleft") %>%
+  addLayersControl(
+    overlayGroups = c("7 June 2021 (Mon)","8 June 2021 (Tue)","9 June 2021 (Wed)","10 June 2021 (Thu)",
+                      "11 June 2021 (Fri)","12 June 2021 (Sat)","13 June 2021 (Sun)","14 June 2021 (Mon)"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  addTimeline(int.data.tracks.time,timelineOpts = timelineOptions(
+    pointToLayer = htmlwidgets::JS(
+      "
+function(data, latlng) {
+  return L.circleMarker(latlng, {
+    radius: 3
+  })
+}
+"
+    ),
+    style = NULL
+  )
+)
+```
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+## Graph
+
+```{r plotly graph panel,message=FALSE, warning=FALSE, paged.print=FALSE}
+require(plotly)
+require(ggplot2)
+plot_ly(avg.air.data.by.date, x = ~date.time, mode='lines') %>%  
+  add_trace(y = ~NO2, name = "NO2", connectgaps = TRUE, line = list(shape = 'lines+markers',color='	rgb(161, 39, 69)'))%>%
+  add_trace(y = ~PM10, name = "PM10",connectgaps = TRUE, line = list(shape = "lines+markers",color='	rgb(26, 175, 125)'),visible = "legendonly") %>% 
+  add_trace(y = ~PM2.5, name = "PM2.5",connectgaps = TRUE, line = list(shape = "lines+markers",color='	rgb(51, 221, 198)'),visible = "legendonly") %>%
+  add_lines(y= 25, name="The WHO Guidelines for NO2 (24hrs mean)",line = list(shape = "spline", color="black",dash = 'dash')) %>%
+  add_lines(y=~ref.NO2, name="AURN NO2",line = list(shape = "dot", color="grey80",dash = 'dot')) %>%
+  add_lines(y=~ref.PM10, name="AURN PM10",line = list(shape = "dot", color="grey80",dash = 'dot'),visible = "legendonly")%>%
+  add_lines(y=~ref.PM2.5, name="AURN PM2.5",line = list(shape = "dot", color="grey80",dash = 'dot'),visible = "legendonly") %>% layout(hovermode = "x unified") %>% layout(
+  title = "Daily personal exposure variation in average hourly emissions of pollutants",
+  xaxis = list(title = "Hour",
+    rangeslider = list(type = "Hour"),tickformat="%H:%M:%S"),
+  yaxis = list(title = "ppb"))
+
+```
+
