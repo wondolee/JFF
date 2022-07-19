@@ -9,6 +9,13 @@ output:
     vertical_layout: fill
 ---
 
+```{css, echo=FALSE}
+.fluid-row {
+  font-size: 5.9vw;
+}
+```
+  
+
 ```{r setup,message=FALSE, warning=FALSE, paged.print=FALSE,include=FALSE}
 knitr::opts_chunk$set(message = FALSE,warning=FALSE, paged.print=FALSE)
 Sys.setlocale(locale="English_United Kingdom")
@@ -96,12 +103,12 @@ avg.air.data.by.date<-left_join(ref.air.data.by.date,avg.air.data.by.date,by=c("
 avg.air.data.by.date$date.time<-as.POSIXct(avg.air.data.by.date$date.time, format="%H:%M:%S")
 ```
 
-Column {data-width=600}
+Column {data-width=1000}
 -----------------------------------------------------------------------
 
-## Map
+### Map
 
-```{r leaflet map panel,message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r leaflet map panel,message=FALSE, warning=FALSE}
 leaflet() %>% addProviderTiles('CartoDB.Positron') %>%
   addPolygons(data=oxford,stroke = FALSE, color = "grey80", fillOpacity = 0.2) %>%
   addPolygons(data=subset(int.data.tracks.geohash,date=="2021-06-07"),fillColor = ~pal(NO2), fillOpacity = 0.1,
@@ -141,23 +148,23 @@ function(data, latlng) {
 )
 ```
 
-Column {data-width=600}
+Column {data-width=1000}
 -----------------------------------------------------------------------
 
-## Graph
+### Graph
 
-```{r plotly graph panel,message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r plotly graph panel,message=FALSE, warning=FALSE}
 require(plotly)
 require(ggplot2)
 plot_ly(avg.air.data.by.date, x = ~date.time, mode='lines') %>%  
   add_trace(y = ~NO2, name = "NO2", connectgaps = TRUE, line = list(shape = 'lines+markers',color='	rgb(161, 39, 69)'))%>%
   add_trace(y = ~PM10, name = "PM10",connectgaps = TRUE, line = list(shape = "lines+markers",color='	rgb(26, 175, 125)'),visible = "legendonly") %>% 
   add_trace(y = ~PM2.5, name = "PM2.5",connectgaps = TRUE, line = list(shape = "lines+markers",color='	rgb(51, 221, 198)'),visible = "legendonly") %>%
-  add_lines(y= 25, name="The WHO Guidelines for NO2 (24hrs mean)",line = list(shape = "spline", color="black",dash = 'dash')) %>%
+  add_lines(y= 25, name="WHO Guidelines for NO2",line = list(shape = "spline", color="black",dash = 'dash')) %>%
   add_lines(y=~ref.NO2, name="AURN NO2",line = list(shape = "dot", color="grey80",dash = 'dot')) %>%
   add_lines(y=~ref.PM10, name="AURN PM10",line = list(shape = "dot", color="grey80",dash = 'dot'),visible = "legendonly")%>%
   add_lines(y=~ref.PM2.5, name="AURN PM2.5",line = list(shape = "dot", color="grey80",dash = 'dot'),visible = "legendonly") %>% layout(hovermode = "x unified") %>% layout(
-  title = "Daily personal exposure variation in average hourly emissions of pollutants",
+  title = "Exposure variation in average hourly emissions of pollutants",
   xaxis = list(title = "Hour",
     rangeslider = list(type = "Hour"),tickformat="%H:%M:%S"),
   yaxis = list(title = "ppb"))
